@@ -214,9 +214,9 @@ footer a{color:inherit}
       </div>
       <div class="factors" id="factors"></div>
       <div class="panel">
-        <div class="panel-h"><h2 id="strip-l">Next 12 hours</h2><span class="hint">Tap an hour to check that start time</span></div>
+        <div class="panel-h"><h2 id="strip-l">Next 12 hours</h2><span class="hint">Each hour shows a run of your length starting then. Tap to check it.</span></div>
         <div class="strip-wrap"><div class="strip" id="strip" role="group" aria-labelledby="strip-l"></div></div>
-        <div class="legend"><span><i class="bg-go"></i>Go</span><span><i class="bg-ca"></i>Caution</span><span><i class="bg-no"></i>No-go</span><span><i class="bg-off"></i>Outside your run hours (faded)</span></div>
+        <div class="legend"><span><i class="bg-go"></i>Go</span><span><i class="bg-ca"></i>Caution</span><span><i class="bg-no"></i>No-go</span></div>
       </div>
     </div>
     <div class="panel">
@@ -238,7 +238,7 @@ footer a{color:inherit}
     </div>
     <div class="fineprint">
       <p>Each condition is checked across your whole run, using its worst value. The verdict is the worst condition. When sources disagree, the worse one wins. If it's raining at your nearest NEA rain station, "Start now" is a No-go.</p>
-      <p>Run hours avoid office and meal times: weekdays 5:30–8:30am and 6–7:30pm, weekends 6–11:30am and 3–7:30pm. The whole run has to fit inside one of them.</p>
+      <p>Any start time counts, day or night. The best window is the earliest Go start in the next 24 hours, and "Leave" shows how late you can still start and stay in the Go.</p>
       <p>Confidence is high when the run falls inside NEA's 2-hour nowcast, medium 2–6 hours ahead, low further out. If thunderstorm or PM2.5 data is missing, you'll see "Can't confirm" instead of a guess.</p>
     </div>
   </details>
@@ -261,7 +261,7 @@ footer a{color:inherit}
   "use strict";
   var SG={type:"Feature",properties:{},geometry:{type:"Polygon",coordinates:[[[103.96,1.3903],[103.9852,1.3852],[103.9996,1.3801],[104.0032,1.3734],[103.9924,1.3548],[103.9744,1.3345],[103.9528,1.3176],[103.9312,1.3109],[103.906,1.3092],[103.888,1.3008],[103.852,1.2771],[103.8484,1.2721],[103.8448,1.2687],[103.8376,1.267],[103.8268,1.2636],[103.8016,1.2653],[103.7908,1.2687],[103.7836,1.2737],[103.7764,1.2873],[103.7548,1.2974],[103.7296,1.3025],[103.708,1.3058],[103.6648,1.3041],[103.6468,1.3092],[103.6396,1.3227],[103.6432,1.3379],[103.6756,1.3801],[103.6792,1.3987],[103.6828,1.4105],[103.6936,1.4207],[103.708,1.4291],[103.7188,1.4308],[103.7404,1.4274],[103.762,1.4308],[103.7908,1.4443],[103.8052,1.4494],[103.8304,1.4477],[103.8556,1.4392],[103.9312,1.4004],[103.96,1.3903]]]}};
   var E=window.RunWindowEngine, AREAS=E.AREAS, LEN=E.LEN, NAMES=E.NAMES, ICON=E.ICON, FICON=E.FICON, FNAME=E.FNAME, DOW=E.DOW, STALE_MS=E.STALE_MS;
-  var sgParts=E.sgParts, fmt=E.fmt, fmtIso=E.fmtIso, normalise=E.normalise, toModel=E.toModel, evaluate=E.evaluate, why=E.why, best=E.best, fits=E.fits, hourOff=E.hourOff, startAt=E.startAt;
+  var sgParts=E.sgParts, fmt=E.fmt, fmtIso=E.fmtIso, normalise=E.normalise, toModel=E.toModel, evaluate=E.evaluate, why=E.why, best=E.best, fits=E.fits, startAt=E.startAt;
 
   var CACHE_KEY="rw-last-v2", PREFS_KEY="rw-prefs";
   var $=function(id){ return document.getElementById(id); };
@@ -392,14 +392,15 @@ footer a{color:inherit}
     if (b.none){
       bc.dataset.l="-1";
       $("best-v").textContent="No safe window";
-      $("best-r").textContent=!b.any?"A "+len+"-min run doesn't fit in your run hours in the next 24 h."
+      $("best-r").textContent=!b.any?"A "+len+"-min run doesn't fit in the next 24 h."
         :b.unknown?"Nothing can be confirmed as safe. Some data is missing and the rest is No-go."
-        :"Every "+len+"-min slot in your run hours over the next 24 h is a No-go.";
+        :"Every "+len+"-min start time over the next 24 h is a No-go.";
       $("best-c").textContent="";
     } else {
       var p=b.pick; bc.dataset.l=p.r.level;
       // Say "tomorrow" once instead of tagging every time with "(tmrw)".
-      var tmrw=p.s>=1440, day=tmrw?" tomorrow":"", t=function(m){ return fmt(m%1440); };
+      // A window that starts tonight but runs past midnight marks only the later times "(tmrw)".
+      var startsTmrw=p.s>=1440, day=startsTmrw?" tomorrow":"", t=function(m){ return fmt(m%1440)+(!startsTmrw&&m>=1440?" (tmrw)":""); };
       $("best-v").textContent=(p.r.level===0?(b.leave>p.s?"Leave "+t(p.s)+" – "+t(b.leave):"Leave at "+t(p.s)):"Best: "+t(p.s))+day;
       $("best-r").textContent=(p.r.level===0?"Go · finish by "+t(b.leave+len):"Caution")+" · "+why(p.r);
       $("best-c").textContent=p.r.conf;
@@ -416,11 +417,11 @@ footer a{color:inherit}
     var strip=$("strip"); strip.textContent="";
     var h0=Math.floor(sc.now/60);
     for (var i=0;i<12;i++){ (function(i){
-      var h=h0+i, s=i===0?sc.now:h*60, r=evaluate(sc,A,s,60-(i===0?sc.now%60:0),i===0);
+      var h=h0+i, s=startAt(sc,i), r=evaluate(sc,A,s,state.len,i===0), off=!fits(sc,s,state.len);
       var btn=document.createElement("button"); btn.type="button"; btn.className="cellbtn"; btn.id="hour-"+i;
-      btn.dataset.l=r.level; btn.dataset.off=hourOff(sc,h)?"1":"0"; btn.setAttribute("aria-pressed",state.k===i?"true":"false");
-      btn.setAttribute("aria-label",(i===0?"Now":fmt(h*60))+": "+NAMES[r.level]+(hourOff(sc,h)?", outside run hours":""));
-      btn.title=(i===0?"Now":fmt(h*60))+": "+NAMES[r.level]+" · "+why(r);
+      btn.dataset.l=r.level; btn.dataset.off=off?"1":"0"; btn.setAttribute("aria-pressed",state.k===i?"true":"false");
+      btn.setAttribute("aria-label",(i===0?"Now":fmt(h*60))+": "+NAMES[r.level]+(off?", outside run hours":""));
+      btn.title=(i===0?"Now":fmt(h*60))+", "+state.len+" min: "+NAMES[r.level]+" · "+why(r);
       btn.innerHTML='<span class="bar">'+(r.reasons.length?icon(FICON[r.reasons[0]]):"")+'</span><span></span>';
       btn.lastChild.textContent=i===0?"Now":fmt(h*60);
       btn.addEventListener("click",function(){ state.k=i; render(); });

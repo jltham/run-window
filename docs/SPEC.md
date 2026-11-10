@@ -124,14 +124,7 @@ Every source sits behind an **adapter** that returns normalised data with an `ob
 ### Inputs
 - **Area:** one NEA nowcast area, chosen from a list. A one-time "Use my location" button picks the nearest area. The area's coordinates give the Open-Meteo point, the nearest PM2.5 region and the nearest rain station.
 - **Run length:** presets **45 / 60 / 90 / 120 / 180 min**, default **60**.
-- **Allowed run hours** (defaults, editable). A run must fit **completely** inside one block.
-
-| Days | Blocks | Reason |
-|---|---|---|
-| Mon–Fri | **05:30–08:30**, **18:00–19:30** | Office 09:00–18:00; finish before dinner |
-| Sat–Sun | **06:00–11:30**, **15:00–19:30** | Lunch 12:00–13:30 + 90 min digestion buffer |
-
-  So a 180-min run only fits on weekend mornings, and the app says so instead of suggesting something that can't work.
+- **Run hours:** any time, day or night. *Changed 2026-11-10:* the earlier defaults (weekdays 05:30–08:30 and 18:00–19:30, weekends 06:00–11:30 and 15:00–19:30) made the app skip a fine 11pm slot, so the user chose "any hour". The engine keeps a `BLOCKS` setting (null = any hour) in case run hours come back as a setting.
 
 ### Thresholds (defaults, editable)
 
@@ -167,11 +160,11 @@ Each value is the worst one across the whole run window.
 | **Outlook · low** | The window starts 6 h or more ahead |
 
 ### Best-window search
-- Try start times every **15 min** from now to +24 h, keeping only those where the whole run fits inside an allowed block.
+- Try starting **now**, then every **15 min** up to +24 h.
 - *Changed from +12 h on 2026-11-10:* a 12 h search run in the afternoon only reached the 18:00–19:30 weekday block, never the next morning, so the card kept saying "No safe window" on rainy evenings.
 - Pick the best: **Go before Caution**, then **earliest**, then **lowest max heat index**. Never suggest a No-go window.
 - **"Leave by"** = the latest start in the same unbroken run of Go start times as the pick.
-- If nothing fits: "No window fits a 180-min run in the next 24 h. Next allowed block: Sat 06:00."
+- If nothing is Go or Caution: "Every 60-min start time over the next 24 h is a No-go."
 
 ### Missing or stale data
 - **Never default to Go.**
@@ -189,7 +182,7 @@ One screen, no navigation, phone first, and it also works on desktop.
 1. **Run length buttons:** 45 / 60 / 90 / 120 / 180
 2. **"Start now" card:** a large Go / Caution / No-go, a one-line reason, and the confidence label
 3. **"Best window" card:** "Leave by 6:10pm, finish dry", or why nothing fits
-4. **12-hour strip:** each hour coloured by verdict, hours outside allowed run times greyed out. The best window can be further out than the strip (up to 24 h).
+4. **12-hour strip:** each hour coloured by the verdict for a run of the chosen length starting at that hour (same as the verdict card and the map). The best window can be further out than the strip (up to 24 h).
 5. **Footer:** each source with its "as of" time, and a settings button (opens a drawer: area, thresholds, run hours)
 
 **Loading:** show the last result from browser storage immediately, labelled "from 25 min ago, refreshing…", and replace it when fresh data arrives. If the refresh fails, show the error, and grey out the old verdict so it is never shown as current.
@@ -225,7 +218,7 @@ One screen, no navigation, phone first, and it also works on desktop.
 | D8 | Singapore only; NEA + Open-Meteo combined, the worse one wins |
 | D9 | Confidence labels by how far ahead the window is |
 | D10 | Three levels with vetoes; default thresholds as in §8 |
-| D11 | Run only outside office hours and meal times (§8 defaults) |
+| D11 | ~~Run only outside office hours and meal times~~ → any hour (changed 2026-11-10) |
 | D12 | Data failures show errors; never default to Go |
 | D13 | Conditions only; "how I feel" is out of scope |
 | D14 | Web app for phone and desktop, installable |
