@@ -193,13 +193,9 @@ footer{font-size:13px;color:var(--muted);border-top:1.5px solid var(--line);padd
 
 <section aria-labelledby="demo-h">
   <h2 id="demo-h">Where can I run, and when?</h2>
-  <p class="muted">Each NEA nowcast area is coloured by the verdict for a run starting at the chosen time. Tap an area to make it yours. This page can't call outside APIs, so it reads a snapshot of real NEA and Open-Meteo data saved alongside it. The live app will fetch fresh data every time it opens. Three made-up sample situations are included for comparison.</p>
+  <p class="muted">Each NEA nowcast area is coloured by the verdict for a run starting at the chosen time. Tap an area to make it yours. This page can't call outside APIs, so it reads a snapshot of real NEA and Open-Meteo data saved alongside it. Pick a start time with the slider or the hour buttons, and the verdict, the reasons and the map all move to that time.</p>
   <div class="board">
     <div class="row">
-      <div class="ctl">
-        <span class="ctl-label" id="sc-l">Situation</span>
-        <div class="chips" role="group" aria-labelledby="sc-l" id="scenarios"></div>
-      </div>
       <span class="sample" id="data-tag">Loading…</span>
     </div>
     <p class="snap" id="snap-note" hidden></p>
@@ -303,7 +299,7 @@ footer{font-size:13px;color:var(--muted);border-top:1.5px solid var(--line);padd
 
 <footer>
   <span>Data in the real app: NEA via data.gov.sg (2-hour nowcast, rainfall, PM2.5) and Open-Meteo (hourly forecast, air quality). Both are free and need no key.</span>
-  <span>Area positions are NEA's nowcast areas. Coastline from Natural Earth (simplified). "Real data" numbers are a saved snapshot of the NEA and Open-Meteo APIs, refreshed by re-running the snapshot script. The "Sample" situations are made up for illustration.</span>
+  <span>Area positions are NEA's nowcast areas. Coastline from Natural Earth (simplified). "Real data" numbers are a saved snapshot of the NEA and Open-Meteo APIs, refreshed by re-running the snapshot script.</span>
 </footer>
 </div>
 
@@ -322,42 +318,11 @@ footer{font-size:13px;color:var(--muted);border-top:1.5px solid var(--line);padd
   var FNAME={storm:"Thunderstorm",rain:"Rain",heat:"Heat index",pm:"PM2.5"};
   var DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-  function r1(x){ return Math.round(x*2)/2; }
-  function baseHeat(h){ var x=((h%24)+24)%24; return x>=7&&x<=19 ? 27.5+8.5*Math.sin(Math.PI*(x-7)/12) : 27.5-(x<7?(7-x)*0.15:0.4); }
-  function areaHeat(a,h){ var d=Math.hypot(a[2]-103.844,a[1]-1.292); return baseHeat(h)+(d<0.05?0.8:0)-(/Catchment|Island|Ubin|Tekong|Sentosa/.test(a[0])?0.7:0); }
 
-  // Made-up sample situations. gen(area, i, clockHour) gives the hourly forecast i hours after the current hour.
-  var SCEN=[
-    {id:"clear",label:"Sample: clear morning",sub:"Tue 06:10",dow:2,now:6*60+10,
-     gen:function(a,i,h){ var x=h%24, west=a[2]<103.87;
-       if (x>=14&&x<=16&&west) return {rp:70,code:95,at:r1(areaHeat(a,h)-2.5),pm:20};
-       if (x>=13&&x<=17) return {rp:40,code:80,at:r1(areaHeat(a,h)-1),pm:20};
-       return {rp:x<9?5:15,code:2,at:r1(areaHeat(a,h)),pm:a[2]<103.75?24:18}; }},
-    {id:"storm",label:"Sample: storms",sub:"Sat 13:40",dow:6,now:13*60+40,
-     gen:function(a,i,h){ var c=103.78+0.06*i, d=Math.abs(a[2]-c)+Math.abs(a[1]-1.35)*0.5, s=i<=4?1:Math.max(0,1-(i-4)*0.4);
-       if (d<0.07&&s>0.5) return {rp:80,code:95,at:r1(areaHeat(a,h)-3.5),pm:20};
-       if (d<0.14&&s>0.3) return {rp:50,code:80,at:r1(areaHeat(a,h)-2),pm:20};
-       return {rp:15,code:3,at:r1(areaHeat(a,h)),pm:20}; }},
-    {id:"haze",label:"Sample: haze",sub:"Thu 17:20",dow:4,now:17*60+20,
-     gen:function(a,i,h){ return {rp:5,code:3,at:r1(areaHeat(a,h)),pm:Math.max(30,Math.round(118-i*10+(103.95-a[2])*350))}; }}
-  ];
 
-  function build(sc){
-    if (sc.real) return sc.areas;
-    var h0=Math.floor(sc.now/60);
-    return AREAS.map(function(a){
-      var hours=[]; for (var i=0;i<16;i++) hours.push(sc.gen(a,i,h0+i));
-      var thunder=hours[0].code===95||hours[1].code===95;
-      return {name:a[0],lat:a[1],lon:a[2],hours:hours,
-        nowcast: sc.id==="haze"?"Hazy" : thunder?"Thundery Showers" : hours[0].rp>=50?"Showers" : "Partly Cloudy",
-        rainNow: hours[0].code===95?1.2:0, pmNow: hours[0].pm+(sc.id==="haze"?6:0)};
-    });
-  }
-
-  var state={sc:SCEN[0],len:60,area:"Bishan",k:0};
+  var state={sc:null,len:60,area:"Bishan",k:0}, data=[];
   try { var sv=JSON.parse(localStorage.getItem("rw-map")||"null");
-    if (sv){ state.sc=SCEN.filter(function(s){return s.id===sv.sc;})[0]||SCEN[0]; if (LEN.indexOf(sv.len)>=0) state.len=sv.len; if (AREAS.some(function(a){return a[0]===sv.area;})) state.area=sv.area; } } catch(e){}
-  var data=build(state.sc);
+    if (sv){ if (LEN.indexOf(sv.len)>=0) state.len=sv.len; if (AREAS.some(function(a){return a[0]===sv.area;})) state.area=sv.area; } } catch(e){}
 
   function rate(v,t){ return v<=t[0]?0 : v<=t[1]?1 : 2; }
   function weekend(sc,min){ var d=(sc.dow+Math.floor(min/1440))%7; return d===0||d===6; }
@@ -487,20 +452,19 @@ footer{font-size:13px;color:var(--muted);border-top:1.5px solid var(--line);padd
   function render(){
     var sc=state.sc, len=state.len;
     tagData();
-    try { localStorage.setItem("rw-map",JSON.stringify({sc:sc.id,len:len,area:state.area})); } catch(e){}
-    chips("scenarios",SCEN.map(function(s){return {key:s.id,label:s.label,sub:s.sub,s:s};}),function(it){return it.s===sc;},
-      function(it){ state.sc=it.s; state.k=0; data=build(it.s); render(); });
+    try { localStorage.setItem("rw-map",JSON.stringify({len:len,area:state.area})); } catch(e){}
     chips("lengths",LEN.map(function(n){return {key:"l"+n,label:n+" min",n:n};}),function(it){return it.n===len;},
       function(it){ state.len=it.n; render(); });
     sel.value=state.area; range.value=state.k;
     range.setAttribute("aria-valuetext",state.k===0?"Now":fmt(startAt(sc,state.k)));
     var A=data.filter(function(x){return x.name===state.area;})[0];
 
-    var now=evaluate(sc,A,sc.now,len,true), nc=document.getElementById("now-card");
+    var t0=startAt(sc,state.k), tLabel=state.k===0?"now":"at "+fmt(t0);
+    var now=evaluate(sc,A,t0,len,state.k===0), nc=document.getElementById("now-card");
     nc.dataset.l=now.level;
-    document.getElementById("now-k").textContent="Start now · "+state.area+" · "+DOW[sc.dow]+" "+fmt(sc.now);
+    document.getElementById("now-k").textContent=(state.k===0?"Start now · ":"Start "+fmt(t0)+" · ")+state.area+" · "+len+" min";
     document.getElementById("now-v").innerHTML=icon(ICON[now.level])+NAMES[now.level];
-    document.getElementById("now-r").textContent=why(now)+(fits(sc,sc.now,len)?"":" · outside your run hours");
+    document.getElementById("now-r").textContent=why(now)+(fits(sc,t0,len)?"":" · outside your run hours");
     document.getElementById("now-c").textContent=now.conf;
 
     var b=best(sc,A,len), bc=document.getElementById("best-card");
@@ -522,7 +486,7 @@ footer{font-size:13px;color:var(--muted);border-top:1.5px solid var(--line);padd
     ["storm","rain","heat","pm"].forEach(function(k){
       var d=document.createElement("div"); d.className="factor"; d.dataset.l=now.f[k].l;
       d.innerHTML=icon(FICON[k])+'<span class="fv"></span><span class="fn"></span>';
-      d.querySelector(".fv").textContent=now.f[k].v; d.querySelector(".fn").textContent=FNAME[k]+" · now";
+      d.querySelector(".fv").textContent=now.f[k].v; d.querySelector(".fn").textContent=FNAME[k]+" · "+tLabel;
       fx.append(d);
     });
 
@@ -542,16 +506,11 @@ footer{font-size:13px;color:var(--muted);border-top:1.5px solid var(--line);padd
 
     var src=document.getElementById("sources"); src.textContent="";
     var rows;
-    if (sc.real){
-      var m=sc.meta, at=function(iso){ return iso?fmt(sgParts(iso).min):"time unknown"; }, nn=function(v,u){ return v==null?"missing":v+u; };
-      rows=[["NEA nowcast ("+A.name+")",(A.nowcast||"missing")+(m.nowcast?" · valid "+at(m.nowcast.validFrom)+"–"+at(m.nowcast.validTo):"")],
-        ["NEA rainfall ("+(A.station||"nearest station")+")",nn(A.rainNow," mm")+" · reading at "+at(m.rainfallAt)],
-        ["NEA PM2.5 ("+(A.pmRegion||"region")+")",nn(A.pmNow," µg/m³")+" · hour of "+at(m.pm25At)],
-        ["Open-Meteo","hourly forecast from "+fmt(Math.floor(sc.now/60)*60)+" · pulled "+at(m.fetchedAt)]];
-    } else {
-      rows=[["NEA nowcast ("+A.name+")",A.nowcast],["NEA rainfall (nearest station)",A.rainNow+" mm in last 5 min"],["NEA PM2.5 (region)",A.pmNow+" µg/m³"],["Open-Meteo","hourly forecast, 14 h"]]
-        .map(function(x){ return [x[0],x[1]+" · sample as of "+fmt(sc.now)]; });
-    }
+    var m=sc.meta, at=function(iso){ return iso?fmt(sgParts(iso).min):"time unknown"; }, nn=function(v,u){ return v==null?"missing":v+u; };
+    rows=[["NEA nowcast ("+A.name+")",(A.nowcast||"missing")+(m.nowcast?" · valid "+at(m.nowcast.validFrom)+"–"+at(m.nowcast.validTo):"")],
+      ["NEA rainfall ("+(A.station||"nearest station")+")",nn(A.rainNow," mm")+" · reading at "+at(m.rainfallAt)],
+      ["NEA PM2.5 ("+(A.pmRegion||"region")+")",nn(A.pmNow," µg/m³")+" · hour of "+at(m.pm25At)],
+      ["Open-Meteo","hourly forecast from "+fmt(Math.floor(sc.now/60)*60)+" · pulled "+at(m.fetchedAt)]];
     rows.forEach(function(x){ var s=document.createElement("span"); s.textContent=x[0]+": "+x[1]; src.append(s); });
     paintMap();
   }
@@ -570,7 +529,6 @@ footer{font-size:13px;color:var(--muted);border-top:1.5px solid var(--line);padd
   }
   function tagData(){
     var sc=state.sc, tag=document.getElementById("data-tag"), note=document.getElementById("snap-note");
-    if (!sc.real){ tag.textContent="Sample data, not live"; tag.dataset.real="0"; note.hidden=true; return; }
     tag.textContent="Real data · snapshot"; tag.dataset.real="1";
     var age=Math.round((Date.now()-sc.fetchedMs)/60000), m=sc.meta;
     var ageTxt=age<60?age+" min ago":age<2880?Math.round(age/60)+" h ago":Math.round(age/1440)+" days ago";
@@ -578,13 +536,11 @@ footer{font-size:13px;color:var(--muted);border-top:1.5px solid var(--line);padd
       +(age>120?" This snapshot is over 2 hours old, so the live app would treat it as stale.":"");
     note.hidden=false;
   }
-  function boot(){ initMap(); data=build(state.sc); render(); }
-  fetch("data.json").then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); }).then(function(j){
-    var real=realScenario(j); SCEN.unshift(real);
-    var keep=null; try { var sv=JSON.parse(localStorage.getItem("rw-map")||"null"); if (sv&&sv.sc!=="real") keep=sv.sc; } catch(e){}
-    state.sc=keep?SCEN.filter(function(s){return s.id===keep;})[0]||real:real; boot();
-  }).catch(function(){
-    var n=document.getElementById("snap-note"); n.textContent="Couldn't load the real-data snapshot, so only the sample situations are shown."; n.hidden=false; boot();
+  fetch("data.json").then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); }).then(function(j){
+    state.sc=realScenario(j); data=state.sc.areas; initMap(); render();
+  }).catch(function(e){
+    document.getElementById("data-tag").textContent="No data";
+    var n=document.getElementById("snap-note"); n.textContent="Couldn't load the weather snapshot (data.json: "+e.message+"). Reload the page to try again."; n.hidden=false;
   });
 })();
 </script>
