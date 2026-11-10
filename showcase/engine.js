@@ -9,7 +9,9 @@
   "use strict";
   var AREAS=[["Ang Mo Kio",1.375,103.839],["Bedok",1.321,103.924],["Bishan",1.3508,103.839],["Boon Lay",1.304,103.701],["Bukit Batok",1.353,103.754],["Bukit Merah",1.277,103.819],["Bukit Panjang",1.362,103.772],["Bukit Timah",1.325,103.791],["Central Water Catchment",1.38,103.805],["Changi",1.357,103.987],["Choa Chu Kang",1.377,103.745],["City",1.292,103.844],["Clementi",1.315,103.76],["Geylang",1.318,103.884],["Hougang",1.3612,103.886],["Jalan Bahar",1.347,103.67],["Jurong East",1.326,103.737],["Jurong Island",1.266,103.699],["Jurong West",1.3404,103.705],["Kallang",1.312,103.862],["Lim Chu Kang",1.423,103.7173],["Mandai",1.419,103.812],["Marine Parade",1.297,103.891],["Novena",1.327,103.826],["Pasir Ris",1.37,103.948],["Paya Lebar",1.358,103.914],["Pioneer",1.315,103.675],["Pulau Tekong",1.403,104.053],["Pulau Ubin",1.404,103.96],["Punggol",1.401,103.904],["Queenstown",1.291,103.7858],["Seletar",1.404,103.869],["Sembawang",1.445,103.8185],["Sengkang",1.384,103.8914],["Sentosa",1.243,103.832],["Serangoon",1.357,103.865],["Southern Islands",1.208,103.842],["Sungei Kadut",1.413,103.756],["Tampines",1.345,103.944],["Tanglin",1.308,103.813],["Tengah",1.374,103.715],["Toa Payoh",1.3343,103.8563],["Tuas",1.2949,103.635],["Western Islands",1.2059,103.746],["Western Water Catchment",1.405,103.689],["Woodlands",1.432,103.7865],["Yishun",1.418,103.839]];
   var LEN=[45,60,90,120,180];
-  var BLOCKS={wk:[[330,510],[1080,1170]],we:[[360,690],[900,1170]]};
+  // Allowed run hours as [start, end) minutes per day type, or null for "any hour".
+  // The user chose any hour on 2026-11-10 (a fine 11pm slot was being skipped).
+  var BLOCKS=null;
   var TH={rain:[30,60],heat:[33,38],pm:[55,150]};
   var NAMES=["Go","Caution","No-go","Can't confirm"], ICON=["i-check","i-warn","i-stop","i-warn"];
   var FICON={storm:"i-bolt",rain:"i-drop",heat:"i-heat",pm:"i-haze"};
@@ -71,8 +73,8 @@
   // ---------- Verdict engine ----------
   function rate(v,t){ return v<=t[0]?0 : v<=t[1]?1 : 2; }
   function weekend(sc,min){ var d=(sc.dow+Math.floor(min/1440))%7; return d===0||d===6; }
-  function fits(sc,s,len){ var m=s%1440, b=weekend(sc,s)?BLOCKS.we:BLOCKS.wk; return b.some(function(x){return m>=x[0]&&m+len<=x[1];}); }
-  function hourOff(sc,h){ var m=(h*60)%1440, b=weekend(sc,h*60)?BLOCKS.we:BLOCKS.wk; return !b.some(function(x){return m<x[1]&&m+60>x[0];}); }
+  function fits(sc,s,len){ if (!BLOCKS) return true; var m=s%1440, b=weekend(sc,s)?BLOCKS.we:BLOCKS.wk; return b.some(function(x){return m>=x[0]&&m+len<=x[1];}); }
+  function hourOff(sc,h){ if (!BLOCKS) return false; var m=(h*60)%1440, b=weekend(sc,h*60)?BLOCKS.we:BLOCKS.wk; return !b.some(function(x){return m<x[1]&&m+60>x[0];}); }
   function evaluate(sc,A,start,len,isNow){
     var ncEnd=sc.ncEnd, end=start+len, h0=Math.floor(sc.now/60), inNow=start<ncEnd;
     var rp=null, at=null, pm=null, storm=false, missing=[], warn=[];
@@ -110,15 +112,16 @@
     return t+(r.warn&&r.warn.length?" · ⚠ "+r.warn.join(", ")+" data missing":"");
   }
   function best(sc,A,len){
-    var first=Math.ceil(sc.now/15)*15, cands=[];
-    for (var s=first; s<=sc.now+SEARCH_MIN; s+=15) if (fits(sc,s,len)) cands.push({s:s,r:evaluate(sc,A,s,len,false)});
-    var fitsAny=cands.length>0, ok=cands.filter(function(c){return c.r.level<2;});
-    var unknown=cands.some(function(c){return c.r.level===3;});
-    cands=cands.filter(function(c){return c.r.level<3;});
-    if (!ok.length) return {none:true,any:fitsAny,unknown:unknown};
+    // Candidates: right now, then every quarter hour up to +24 h. Starting now uses the live rain reading.
+    var cands=[], starts=[sc.now];
+    for (var q=Math.floor(sc.now/15)*15+15; q<=sc.now+SEARCH_MIN; q+=15) starts.push(q);
+    starts.forEach(function(s){ if (fits(sc,s,len)) cands.push({s:s,r:evaluate(sc,A,s,len,s===sc.now)}); });
+    var ok=cands.filter(function(c){return c.r.level<2;});
+    if (!ok.length) return {none:true,any:cands.length>0,unknown:cands.some(function(c){return c.r.level===3;})};
     ok.sort(function(a,b){return a.r.level-b.r.level||a.s-b.s||a.r.heat-b.r.heat;});
     var p=ok[0], leave=p.s;
-    if (p.r.level===0) cands.forEach(function(c){ if (c.s===leave+15&&c.r.level===0) leave=c.s; });
+    // "Leave by" = the last start in the unbroken run of Go candidates that begins at the pick.
+    if (p.r.level===0) for (var i=cands.indexOf(p)+1; i<cands.length&&cands[i].r.level===0&&cands[i].s-cands[i-1].s<=15; i++) leave=cands[i].s;
     return {pick:p,leave:leave};
   }
   function startAt(sc,k){ return k===0?sc.now:(Math.floor(sc.now/60)+k)*60; }

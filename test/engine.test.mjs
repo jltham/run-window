@@ -30,47 +30,63 @@ const model = (opts) => {
 };
 const clock = (min) => E.fmt(min);
 
-// ---------- Best window ----------
+// ---------- Best window (runs allowed at any hour) ----------
 
-test("afternoon with a rainy evening still finds tomorrow morning (regression)", () => {
-  // Tue 2:17pm. 2pm–8pm (hours 0–5) rain 90%, dry after that.
-  const { sc, A } = model({ at: "2026-11-10T14:17", hour: (i) => (i <= 5 ? { rp: 90 } : {}) });
-  const b = E.best(sc, A, 45);
-  assert.equal(b.none, undefined, "should not say 'No safe window'");
+test("a Go slot at 11pm is the best window when the evening before it is wet (regression)", () => {
+  // Tue 2:17pm. 2pm–10pm (hours 0–7) rain 90%, 10pm Caution (45%), dry from 11pm.
+  const { sc, A } = model({ at: "2026-11-10T14:17", hour: (i) => (i <= 7 ? { rp: 90 } : i === 8 ? { rp: 45 } : {}) });
+  const b = E.best(sc, A, 60);
+  assert.equal(b.none, undefined);
   assert.equal(b.pick.r.level, 0);
-  assert.equal(clock(b.pick.s), "5:30am (tmrw)");
-  assert.equal(clock(b.leave), "7:45am (tmrw)", "latest Go start that still ends by 8:30am");
+  assert.equal(clock(b.pick.s), "11pm");
 });
 
-test("picks today's evening when it is Go, before tomorrow", () => {
-  const { sc, A } = model({ at: "2026-11-10T14:17", hour: () => ({}) });
+test("starting now is the best window when now is Go; Leave by is the last start that stays dry", () => {
+  // Dry until 4pm, rain from 4pm (hour 2). A 60-min run must finish by 4pm, so the last Go start is 3pm.
+  const { sc, A } = model({ at: "2026-11-10T14:17", hour: (i) => (i >= 2 && i <= 4 ? { rp: 90 } : {}) });
   const b = E.best(sc, A, 60);
-  assert.equal(clock(b.pick.s), "6pm");
-  assert.equal(clock(b.leave), "6:30pm");
+  assert.equal(b.pick.s, sc.now);
+  assert.equal(clock(b.leave), "3pm");
+});
+
+test("run length matters: 11pm is Go for 60 min but No-go for 120 min if midnight is wet", () => {
+  const { sc, A } = model({ at: "2026-11-10T14:17", hour: (i) => (i === 10 ? { rp: 90 } : {}) });
+  assert.equal(E.evaluate(sc, A, 23 * 60, 60, false).level, 0);
+  assert.equal(E.evaluate(sc, A, 23 * 60, 120, false).level, 2);
 });
 
 test("prefers a later Go over an earlier Caution", () => {
-  // Evening rain 45% (Caution), tomorrow morning dry.
-  const { sc, A } = model({ at: "2026-11-10T14:17", hour: (i) => (i >= 3 && i <= 5 ? { rp: 45 } : {}) });
+  const { sc, A } = model({ at: "2026-11-10T14:17", hour: (i) => (i <= 2 ? { rp: 45 } : {}) });
   const b = E.best(sc, A, 60);
   assert.equal(b.pick.r.level, 0);
-  assert.equal(clock(b.pick.s), "5:30am (tmrw)");
+  assert.equal(clock(b.pick.s), "5pm");
 });
+
+test("picks the earliest Caution when there is no Go", () => {
+  const { sc, A } = model({ at: "2026-11-10T14:17", hour: () => ({ rp: 45 }) });
+  const b = E.best(sc, A, 60);
+  assert.equal(b.pick.r.level, 1);
+  assert.equal(b.pick.s, sc.now);
+  assert.equal(b.leave, b.pick.s);
+});
+
+test("rain at the station right now pushes the best window to the next quarter hour", () => {
+  const { sc, A } = model({ at: "2026-11-10T14:17", rainNow: 0.4, hour: () => ({}) });
+  assert.equal(clock(E.best(sc, A, 60).pick.s), "2:30pm");
+});
+
+test("a long run can cross midnight", () => {
+  const { sc, A } = model({ at: "2026-11-14T22:00", hour: () => ({}) });
+  assert.ok(E.fits(sc, 23 * 60, 180));
+  assert.equal(E.evaluate(sc, A, 23 * 60, 180, false).level, 0);
+});
+
 
 test("never suggests a No-go window and says why when nothing works", () => {
   const { sc, A } = model({ at: "2026-11-10T14:17", hour: () => ({ rp: 95 }) });
   const b = E.best(sc, A, 60);
   assert.equal(b.none, true);
   assert.equal(b.any, true);
-});
-
-test("a 180-min run only fits weekend mornings", () => {
-  // Fri 7pm: weekday evening block is too short; Sat 6:00–11:30 fits.
-  const { sc, A } = model({ at: "2026-11-13T19:00", hour: () => ({}) });
-  const b = E.best(sc, A, 180);
-  assert.equal(clock(b.pick.s), "6am (tmrw)");
-  assert.ok(E.fits(sc, b.pick.s, 180));
-  assert.ok(!E.fits(sc, 18 * 60, 180), "weekday evening block is only 90 min");
 });
 
 test("missing forecast hours give Can't confirm, not Go", () => {
@@ -161,23 +177,6 @@ test("NEA readings more than 2 h older than the fetch count as missing", () => {
   j.pm25At = new Date(Date.parse(j.fetchedAt) - 3 * 3600e3).toISOString();
   const sc = E.toModel(j);
   assert.equal(sc.areas.find((a) => a.name === AREA).pmNow, null);
-});
-
-test("picks a Caution window when no Go exists, and Leave by stops at a break in the Go run", () => {
-  const caution = model({ at: "2026-11-10T14:17", hour: () => ({ rp: 45 }) });
-  const b = E.best(caution.sc, caution.A, 60);
-  assert.equal(b.pick.r.level, 1);
-  assert.equal(b.leave, b.pick.s);
-  // Tomorrow 7am hour turns rainy: Go starts 5:30–6:00 only (a 60-min run from 6:15 reaches 7am).
-  const gap = model({ at: "2026-11-10T14:17", hour: (i) => (i <= 5 || i === 17 ? { rp: 90 } : {}) });
-  const g = E.best(gap.sc, gap.A, 60);
-  assert.equal(clock(g.pick.s), "5:30am (tmrw)");
-  assert.equal(clock(g.leave), "6am (tmrw)");
-});
-
-test("weekend to weekday rollover: Sunday night finds Monday 5:30am", () => {
-  const { sc, A } = model({ at: "2026-11-15T20:00", hour: () => ({}) });
-  assert.equal(clock(E.best(sc, A, 60).pick.s), "5:30am (tmrw)");
 });
 
 test("normalise: keeps FORECAST_HOURS from the current hour and maps nearest station and region", () => {
