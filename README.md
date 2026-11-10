@@ -8,7 +8,7 @@ It checks NEA nowcasts, live rainfall and PM2.5, plus Open-Meteo hourly forecast
 ## How it works
 
 - Fetches live data every time the page opens, when you tap refresh, or when you pull down from the top.
-- Shows a Go / Caution / No-go verdict for your area and run length, the best start time in the next 12 hours,
+- Shows a Go / Caution / No-go verdict for your area and run length, the best start time in the next 24 hours,
   an hour-by-hour strip and a map of all 47 NEA areas.
 - "Use my location" picks your nearest NEA area (your location stays in the browser).
 - If live data can't be reached, it shows the last data it got (or the saved snapshot) and says how old it is.
@@ -20,7 +20,17 @@ It checks NEA nowcasts, live rainfall and PM2.5, plus Open-Meteo hourly forecast
 | [`docs/SPEC.md`](docs/SPEC.md) | The agreed spec: problem, metrics, risks, decision rules, screen, stack |
 | [`showcase/run-window.html`](showcase/run-window.html) | The app (single page) |
 | [`showcase/data.json`](showcase/data.json) | Saved data snapshot, used only when live data can't be fetched (for example inside a Claude artifact) |
+| [`showcase/engine.js`](showcase/engine.js) | Verdict engine: pure functions shared by the page, the snapshot script and the tests |
 | [`showcase/snapshot.mjs`](showcase/snapshot.mjs) | Script that refreshes the saved snapshot |
+| [`test/engine.test.mjs`](test/engine.test.mjs) | Engine tests (Node's built-in test runner) |
+
+## Run the tests
+
+No dependencies. From this folder:
+
+```bash
+node --test test/
+```
 
 ## Refresh the saved snapshot
 

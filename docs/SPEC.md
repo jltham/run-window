@@ -2,7 +2,7 @@
 
 > Status: agreed (grilling session, 2026-11-10). This is the source of truth for building. Nothing is built yet.
 
-**One line:** A phone-first web app that tells a Singapore runner, in one glance, whether conditions will stay safe for their *whole* planned run, now, and when the best window is in the next 12 hours.
+**One line:** A phone-first web app that tells a Singapore runner, in one glance, whether conditions will stay safe for their *whole* planned run, now, and when the best window is in the next 24 hours.
 
 ---
 
@@ -94,7 +94,7 @@ Each stage is usable on its own.
 
 1. **PoC:** the forecast back-test script (§5).
 2. **Now-verdict:** NEA nowcast + live rain + PM2.5 → Go / Caution / No-go for a run starting now, ≤ 120 min.
-3. **Outlook:** Open-Meteo 12 h search, configurable length, confidence labels, "Leave by".
+3. **Outlook:** Open-Meteo 24 h search, configurable length, confidence labels, "Leave by".
 4. **Public-ready:** settings drawer, browser storage, error states, home-screen install, deploy.
 
 Stage 2 alone replaces "look at the sky + weather app".
@@ -112,7 +112,7 @@ All endpoints were checked on 2026-11-10. They return `access-control-allow-orig
 | NEA 2-hour nowcast | `https://api-open.data.gov.sg/v2/real-time/api/two-hr-forecast` | Thunderstorm / rain, now to +2 h | 47 named areas, updated about every 30 min |
 | NEA rainfall | `https://api-open.data.gov.sg/v2/real-time/api/rainfall` | "Raining right now" at the nearest station | Station, 5-min readings |
 | NEA PM2.5 | `https://api-open.data.gov.sg/v2/real-time/api/pm25` | PM2.5 now | 5 regions (N/S/E/W/Central), hourly |
-| Open-Meteo forecast | `https://api.open-meteo.com/v1/forecast` (`hourly=precipitation_probability,apparent_temperature,weather_code`, `timezone=Asia/Singapore`, `forecast_hours=14`) | Heat index, rain probability, thunderstorm codes for 0–12 h | Model grid (~coarse), hourly |
+| Open-Meteo forecast | `https://api.open-meteo.com/v1/forecast` (`hourly=precipitation_probability,apparent_temperature,weather_code`, `timezone=Asia/Singapore`, `forecast_days=3`, 28 hours used) | Heat index, rain probability, thunderstorm codes for 0–27 h | Model grid (~coarse), hourly |
 | Open-Meteo air quality | `https://air-quality-api.open-meteo.com/v1/air-quality` (`hourly=pm2_5`) | PM2.5 outlook | Model grid, hourly |
 
 Every source sits behind an **adapter** that returns normalised data with an `observedAt` / `issuedAt` timestamp, so another country's sources could be added later.
@@ -164,13 +164,14 @@ Each value is the worst one across the whole run window.
 |---|---|
 | **Verdict · high** | The whole run window falls inside NEA's 2-hour nowcast period |
 | **Outlook · medium** | The window starts within 2–6 h |
-| **Outlook · low** | The window starts within 6–12 h |
+| **Outlook · low** | The window starts 6 h or more ahead |
 
 ### Best-window search
-- Try start times every **15 min** from now to +12 h, keeping only those where the whole run fits inside an allowed block.
+- Try start times every **15 min** from now to +24 h, keeping only those where the whole run fits inside an allowed block.
+- *Changed from +12 h on 2026-11-10:* a 12 h search run in the afternoon only reached the 18:00–19:30 weekday block, never the next morning, so the card kept saying "No safe window" on rainy evenings.
 - Pick the best: **Go before Caution**, then **earliest**, then **lowest max heat index**. Never suggest a No-go window.
 - **"Leave by"** = the latest start in the same unbroken run of Go start times as the pick.
-- If nothing fits: "No window fits a 180-min run in the next 12 h. Next allowed block: Sat 06:00."
+- If nothing fits: "No window fits a 180-min run in the next 24 h. Next allowed block: Sat 06:00."
 
 ### Missing or stale data
 - **Never default to Go.**
@@ -188,7 +189,7 @@ One screen, no navigation, phone first, and it also works on desktop.
 1. **Run length buttons:** 45 / 60 / 90 / 120 / 180
 2. **"Start now" card:** a large Go / Caution / No-go, a one-line reason, and the confidence label
 3. **"Best window" card:** "Leave by 6:10pm, finish dry", or why nothing fits
-4. **12-hour strip:** each hour coloured by verdict, hours outside allowed run times greyed out
+4. **12-hour strip:** each hour coloured by verdict, hours outside allowed run times greyed out. The best window can be further out than the strip (up to 24 h).
 5. **Footer:** each source with its "as of" time, and a settings button (opens a drawer: area, thresholds, run hours)
 
 **Loading:** show the last result from browser storage immediately, labelled "from 25 min ago, refreshing…", and replace it when fresh data arrives. If the refresh fails, show the error, and grey out the old verdict so it is never shown as current.
@@ -216,7 +217,7 @@ One screen, no navigation, phone first, and it also works on desktop.
 |---|---|
 | D1 | Real personal annoyance first, learning second |
 | D2 | Audience: me; anyone can use the public URL with settings in their browser; no accounts |
-| D3 | Judge the next run window and suggest the best one in the next 12 h |
+| D3 | Judge the next run window and suggest the best one in the next 24 h |
 | D4 | Fetch when opened; no polling for alerts |
 | D5 | Factors: heat index, rain probability, PM2.5, thunderstorm veto |
 | D6 | One saved location (an NEA area) |
